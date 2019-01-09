@@ -1,0 +1,145 @@
+---
+title: "ESSN_Chinook_2018_postseason"
+author: "Andy Barclay"
+date: "January 9, 2019"
+output: html_document
+---
+
+##Set up workspace
+###Get functions and load tidy packages
+```{r workspace setup, echo=FALSE}
+
+source("C:\\Users\\awbarclay\\Documents\\R\\GitHubCloneFunctions.R")#GCL functions
+source("V:\\Analysis\\Staff\\Andy Barclay\\R\\New Functions\\WorkspaceFolders.GCL.R")#A function I wrote
+
+library("tidyverse")
+
+```
+
+###Create output folders 
+```{r create folders, echo=TRUE, message=FALSE}
+
+#WorkspaceFolders.GCL(Folders=c("Output","bayes","objects","rubias"),Subfolders=list(bayes=c("baseline","mixture","control","output"),rubias=c("baseline","mixture","output")),wd=getwd())
+
+```
+
+###Create locus control and get genotype data
+```{r locus control, echo=TRUE}
+
+#CreateLocusControl.GCL(markersuite = "Chinook_NCI_39SNPs", username ="awbarclay", password = password)#Locus control
+
+#LOKI2R.GCL(sillyvec="KEASTSC18",username="awbarclay",password)#Pull Data from LOKI
+
+#save.image("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/2015_ESSN_Chinook_redo/2015_ESSN_Chinook_redo.Rdata")
+
+load("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/2015_ESSN_Chinook_redo/2015_ESSN_Chinook_redo.Rdata")
+
+```
+
+###Create initial locus object
+```{r initial locus object}
+
+loci <- LocusControl$locusnames
+
+
+```
+
+##Data cleanup
+###Check initial sample size
+```{r initial sample size, echo=TRUE}
+
+ColSize<-data.frame(row.names = "KEASTSC18")
+ColSize$Original_N <- KEASTSC18.gcl$n
+ColSize
+
+```
+
+###Removing individuals with <80% of loci with gentotypes
+Fish that have gentoypes for less than 80% of loci are likely to have poor quality DNA and might introduce gentotyping errors into the mixture data and reduce the accruacy of the mixed stock analysis (MSA)
+```{r missloci,echo=TRUE}
+
+MissLOCI=RemoveIndMissLoci.GCL(sillyvec="KEASTSC18",proportion=0.8)
+MissLOCI
+
+ColSize$AfterMissLoci_N <- KEASTSC18.gcl$n
+ColSize
+
+```
+
+###Check for duplicate individuals and remove them
+Fish with 99% of scores that match
+No duplicates to remove
+```{r dupckeck, echo=TRUE, message=FALSE}
+
+dupcheck<-CheckDupWithinSilly.GCL(sillyvec="KEASTSC18",loci=loci,quantile=NULL,minproportion=0.99)
+dupcheck
+```
+```{r final sample size}
+ColSize$Final_N <- KEASTSC18.gcl$n
+ColSize
+
+```
+
+##Create BAYES baseline and get objects from baseline workspace
+```{r get objects from baseline }
+
+attach("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Baseline/CIChinook2014Baseline.RData")
+
+groups<-ESSNGroups4
+
+groupvec <- c(4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,1,1,1,2,1,2,1,1,1,2,2,3,4,4,4,4,4)
+
+PooledNames54<-PooledNames54
+
+basefortran<-CreateBaseline.GCL(sillyvec=PooledNames54,loci=loci,dir="BAYES/baseline",basename="CI54pops39loci",type="BAYES",groupvec=NULL)#BAYES
+baseline<-create_rubias_baseline(sillyvec = PooledNames54,loci=loci,group_names = groups,groupvec = groupvec,baseline_name = "CI54pops39loci")#rubias
+
+detach()
+baseline
+```
+
+##Set up mixture objects
+###Pool to mixture .gcl objects
+```{r mixture setup}
+
+attributes<-as.tibble(KEASTSC18.gcl$attributes)
+
+mixtures<-attributes %>% 
+  pull(CAPTURE_LOCATION) %>% 
+  unique()
+
+for(mix in mixtures){
+
+  PoolCollections.GCL(collections="KEASTSC18",
+                      loci=loci,
+                      IDs=attributes %>% 
+                        filter(CAPTURE_LOCATION==mix) %>% 
+                        pull(FK_FISH_ID) %>%
+                        as.character%>% 
+                        list,
+                      newname = mix
+                      )
+}
+
+sapply(mixtures,function(mix){get(paste0(mix,".gcl"))$n})#Mixture sample sizes
+
+```
+###Create mixture inputs
+####BAYES mixture files
+```{r create mixture input files,echo=FALSE}
+
+for(mix in mixtures){
+  
+  mixfortan<-CreateMixture.GCL(sillys = mix,loci=loci,mixname=mix,dir="BAYES/mixture")
+  
+}
+
+```
+####rubias mixture input files and object
+```{r}
+
+mix.in<-create_rubias_mixture(mixtures=mixtures)
+
+```
+
+
