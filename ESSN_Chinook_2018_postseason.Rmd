@@ -30,9 +30,9 @@ library("tidyverse")
 
 #LOKI2R.GCL(sillyvec="KEASTSC18",username="awbarclay",password)#Pull Data from LOKI
 
-#save.image("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/2015_ESSN_Chinook_redo/2015_ESSN_Chinook_redo.Rdata")
+#save.image("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/ESSN_Chinook_2018_postseason/ESSN_Chinook_2018_postseason.Rdata")
 
-load("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/2015_ESSN_Chinook_redo/2015_ESSN_Chinook_redo.Rdata")
+load("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/ESSN_Chinook_2018_postseason/ESSN_Chinook_2018_postseason.Rdata")
 
 ```
 
@@ -126,20 +126,90 @@ sapply(mixtures,function(mix){get(paste0(mix,".gcl"))$n})#Mixture sample sizes
 ```
 ###Create mixture inputs
 ####BAYES mixture files
-```{r create mixture input files,echo=FALSE}
+```{r create BAYES mixture input files,echo=FALSE}
 
 for(mix in mixtures){
   
-  mixfortan<-CreateMixture.GCL(sillys = mix,loci=loci,mixname=mix,dir="BAYES/mixture")
+  mixfortran<-CreateMixture.GCL(sillys = mix,loci=loci,mixname=mix,dir="BAYES/mixture")
   
 }
 
 ```
 ####rubias mixture input files and object
-```{r}
+```{r create rubias mixture input files,echo=FALSE}
 
-mix.in<-create_rubias_mixture(mixtures=mixtures)
+mix.in<-create_rubias_mixture(sillyvec=mixtures,loci=loci,path = "rubias/mixture")
+mix.in
 
 ```
 
+##Create BAYES Control Files
+###Priors and Initial starting values
+Getting estimates from 2017 analysis to use as priors
+```{r priors}
+
+attach("V:/Analysis/2_Central/Chinook/Cook Inlet/2014/Mixture/2017 ESSN Chinook postseason analysis/ESSN2017PostseasonAnalysis.RData")
+
+Kasilof_Early_prior<-TotalKasilofEarlyTable %>% as.tibble %>% pull(mean)
+
+Kasilof_Late_prior<-TotalKasilofJulyTable %>% as.tibble %>% pull(mean)
+
+Kenai_Late_prior<-TotalKenaiJulyTable %>% as.tibble %>% pull(mean)
+
+detach()
+
+```
+###Dump control files
+```{r bayes control files,echo=FALSE}
+
+initmat<-MultiChainInits.GCL(npops=length(PooledNames54),nchains=5,prop=.9)
+
+for(mix in mixtures){
+  
+  prior<-Prior.GCL(groupvec=groupvec,groupweights=get(paste0(mix,"_prior")),minval=0.01)
+
+  CreateControlFile.GCL (sillyvec=PooledNames54,loci=loci,mixname=mix,basename="CI54pops39loci",suffix="",nreps=40000,nchains=5,groupvec=groupvec,priorvec=prior,initmat=initmat,dir="BAYES/control",seeds=matrix(sample(seq(10000),3*5),nrow=3),
+                               thin=c(100,1,100),mixfortran=mixfortran,basefortran=basefortran,switches="F T F T T T F")
+  
+}
+
+```
+##Move BAYES file to output folder for analysis
+```{r move BAYES files}
+#Move files into output folders for running BAYES
+
+ folders<-c("control","mixture")
+ dir = paste0(getwd(),"/BAYES")
+ 
+ bayesexe.paths=list.files("V:\\Analysis\\2_Central\\Chinook\\Cook Inlet\\2014\\Baseline\\BAYES\\BAYES exe files",full.names=T,include.dirs=T)
+ 
+ bayesexe.files=list.files("V:\\Analysis\\2_Central\\Chinook\\Cook Inlet\\2014\\Baseline\\BAYES\\BAYES exe files",full.names=F,include.dirs=T)
+
+
+#Move mixture and control files to output folder
+ for(mix in mixtures){
+   
+   dir.create(path=paste0(dir,"/output/",mix))
+ 
+    for(folder in folders){
+          
+          files=list.files(paste(dir,"/",folder,sep=''),pattern=mix) 
+          
+          paths=paste(dir,"/",folder,"/",files,sep='')
+          
+          for (path in paths){
+            
+            file.rename(from= path,to=sub(pattern=paste("BAYES/",folder,sep=''),x= path,replacement=paste("BAYES/output/",mix,sep=''),fixed=T))
+                        
+          }
+    }
+   
+   file.copy(from=paste0(dir,"/baseline/CI54pops39loci.bse"),to=paste0(dir,"/output/",mix,"/CI54pops39loci.bse"))
+   
+   file.copy(from=bayesexe.paths,to=paste0("BAYES/output/",mix,"/",bayesexe.files))
+   
+ }  
+
+
+```
 
